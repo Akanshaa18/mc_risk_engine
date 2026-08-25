@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.15)
+project(mc_risk_engine)
+set(CMAKE_CXX_STANDARD 20)
+SET(CMAKE_CXX_STANDARD_REQUIRED ON)
+add_subdirectory(cpp)
