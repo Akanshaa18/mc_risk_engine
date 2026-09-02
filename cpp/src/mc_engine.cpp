@@ -5,13 +5,14 @@
 #include<thread>
 #include "pricer.h"
 #include "instrument.h"
+#include "mc_engine.h"
 
 std::pair<double,double> gbm(double s1_curr, double s2_curr, double vol1, double vol2, double del_t, double drift, double Z1_corr, double Z2_corr){
     double s1_new = s1_curr * std::exp((drift - 0.5*vol1*vol1)* del_t + vol1*std::sqrt(del_t) * Z1_corr);
     double s2_new = s2_curr * std::exp((drift - 0.5*vol2*vol2)* del_t + vol2*std::sqrt(del_t) * Z2_corr);
     return {s1_new, s2_new};
 }
-double portfolioValue(std::vector<Instrument>& portfolio, double s_appl, double s_goog, double r, double vol1, double vol2){
+double portfolioValue(const std::vector<Instrument>& portfolio, double s_appl, double s_goog, double r, double vol1, double vol2){
     double total = 0.0;
     for(const auto& inst: portfolio){
         double spot = (inst.underlying == "AAPL") ? s_appl : s_goog;
@@ -29,7 +30,7 @@ double portfolioValue(std::vector<Instrument>& portfolio, double s_appl, double 
 void monte_carlo(int start, int end, unsigned int seed,
     std::vector<double>&pnl, double s1_curr, double s2_curr, double vol1, double vol2,
     double del_t, double drift, double r, const std::vector<std::vector<double>>& cholesky_matrix,
-    std::vector<Instrument>& scenarioPortfolio, double todayValue
+    const std::vector<Instrument>& scenarioPortfolio, double todayValue
 ){
     
     std::mt19937 gen(seed);
@@ -57,6 +58,22 @@ void monte_carlo(int start, int end, unsigned int seed,
         double simValueAnti = portfolioValue(scenarioPortfolio, s1_new_anti, s2_new_anti, r, vol1, vol2);
         pnl[start + 2*k + 1] = simValueAnti - todayValue;
     }
+}
+std::pair<double, double> var_cvar(std::vector<double>& pnl, int N, double confidence){
+    std::vector<double> sortedpnl = pnl;
+    std::sort(sortedpnl.begin(), sortedpnl.end());
+
+    double tail = 1.0 - confidence;
+    int index = static_cast<int>(tail*N);
+    std::cout<<"Index:"<<index<<"\n";
+
+    double var_signed = sortedpnl[index];
+    double cvar_sum = std::accumulate(sortedpnl.begin(), sortedpnl.begin()+index, 0.0);
+    double cvar_signed = cvar_sum/index;
+    double var = -var_signed;
+    double cvar = -cvar_signed;
+    return {var,cvar};
+
 }
 int main (){
     //input from DESIGN.md
@@ -104,7 +121,7 @@ int main (){
         int end = start + chunk;
         std::cout << "Thread " << i << ": [" << start << ", " << end << ")\n";
         threads.emplace_back(monte_carlo, start, end, rd(), std::ref(pnl), s1_curr, s2_curr,vol1, vol2, del_t, drift, 
-        r, std::cref(cholesky_matrix), std::ref(scenarioPortfolio), todayValue);
+        r, std::cref(cholesky_matrix), std::cref(scenarioPortfolio), todayValue);
         start = end;
     }
     for(auto& th: threads) th.join();
@@ -122,7 +139,76 @@ int main (){
     double stdev = std::sqrt(sq_sum / pnl.size());
 
     std::cout << "Mean P&L: " << mean << ", Std Dev: " << stdev << "\n";
+
+    // var, cvar
+    auto [var95, cvar95] = var_cvar(pnl,N, 0.95);
+    auto [var99, cvar99] = var_cvar(pnl,N, 0.99);
+
+    std::cout << "95% VaR: " << var95 << ", 95% CVaR: " << cvar95 << "\n";
+    std::cout << "99% VaR: " << var99 << ", 99% CVaR: " << cvar99 << "\n";
+
     return 0;
 }
 
 
+MC_returns riskEngine(MC_Engine mc_params){
+    //shrink each option's maturity by the VaR horizon
+    std::vector<Instrument> scenarioPortfolio = mc_params.portfolio;
+    for(auto& inst: scenarioPortfolio){
+        if(inst.isOption) inst.maturity -= mc_params.del_t;
+    }
+
+    //today's portfolio value
+    double todayValue = portfolioValue(mc_params.portfolio, mc_params.s1_curr, mc_params.s2_curr, mc_params.r, mc_params.vol1, mc_params.vol2);
+
+    std::random_device rd;
+    std::vector<double> pnl(mc_params.N);
+    unsigned int num_threads = std::thread::hardware_concurrency();
+    
+    int total_draws = mc_params.N/2;
+    int base_draws = total_draws/num_threads;
+    int remainder = total_draws%num_threads;
+
+    std::vector<std::thread> threads;
+
+    int start =0;
+
+    for(unsigned int i=0; i<num_threads; ++i){
+        int draws_for_thread = base_draws + (i< static_cast<unsigned int>(remainder) ? 1: 0);
+        int chunk = draws_for_thread * 2; 
+        int end = start + chunk;
+        std::cout << "Thread " << i << ": [" << start << ", " << end << ")\n";
+        threads.emplace_back(monte_carlo, start, end, rd(), std::ref(pnl), mc_params.s1_curr, mc_params.s2_curr,mc_params.vol1, mc_params.vol2, mc_params.del_t, mc_params.drift, 
+        mc_params.r, std::cref(mc_params.cholesky_matrix), std::ref(scenarioPortfolio), todayValue);
+        start = end;
+    }
+    for(auto& th: threads) th.join();
+
+    //mean and std dev
+    double sum = 0.0;
+    for (double x : pnl) sum += x;
+    double mean = sum / pnl.size();
+
+    double sq_sum = 0.0;
+    for (double x : pnl) sq_sum += (x - mean) * (x - mean);
+    double stdev = std::sqrt(sq_sum / pnl.size());
+
+    std::cout << "Mean P&L: " << mean << ", Std Dev: " << stdev << "\n";
+
+    // var, cvar
+    auto [var95, cvar95] = var_cvar(pnl, mc_params.N, 0.95);
+    auto [var99, cvar99] = var_cvar(pnl, mc_params.N, 0.99);
+
+    std::cout << "95% VaR: " << var95 << ", 95% CVaR: " << cvar95 << "\n";
+    std::cout << "99% VaR: " << var99 << ", 99% CVaR: " << cvar99 << "\n";
+
+    MC_returns result;
+    result.cvar95 = cvar95;
+    result.cvar99 = cvar99;
+    result.pnl = pnl;
+    result.var95 = var95;
+    result.var99 = var99;
+
+    return result;
+
+}
