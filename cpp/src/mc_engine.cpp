@@ -177,30 +177,15 @@ MC_returns riskEngine(MC_Engine mc_params){
         int draws_for_thread = base_draws + (i< static_cast<unsigned int>(remainder) ? 1: 0);
         int chunk = draws_for_thread * 2; 
         int end = start + chunk;
-        std::cout << "Thread " << i << ": [" << start << ", " << end << ")\n";
         threads.emplace_back(monte_carlo, start, end, rd(), std::ref(pnl), mc_params.s1_curr, mc_params.s2_curr,mc_params.vol1, mc_params.vol2, mc_params.del_t, mc_params.drift, 
         mc_params.r, std::cref(mc_params.cholesky_matrix), std::ref(scenarioPortfolio), todayValue);
         start = end;
     }
     for(auto& th: threads) th.join();
 
-    //mean and std dev
-    double sum = 0.0;
-    for (double x : pnl) sum += x;
-    double mean = sum / pnl.size();
-
-    double sq_sum = 0.0;
-    for (double x : pnl) sq_sum += (x - mean) * (x - mean);
-    double stdev = std::sqrt(sq_sum / pnl.size());
-
-    std::cout << "Mean P&L: " << mean << ", Std Dev: " << stdev << "\n";
-
     // var, cvar
     auto [var95, cvar95] = var_cvar(pnl, mc_params.N, 0.95);
     auto [var99, cvar99] = var_cvar(pnl, mc_params.N, 0.99);
-
-    std::cout << "95% VaR: " << var95 << ", 95% CVaR: " << cvar95 << "\n";
-    std::cout << "99% VaR: " << var99 << ", 99% CVaR: " << cvar99 << "\n";
 
     MC_returns result;
     result.cvar95 = cvar95;
