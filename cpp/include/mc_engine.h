@@ -25,3 +25,6 @@ struct MC_returns {
 };
 
 MC_returns riskEngine(MC_Engine mc_params);
+
+double portfolioValue(const std::vector<Instrument>& portfolio, double s_aapl, double s_goog,
+                       double r, double vol1, double vol2);

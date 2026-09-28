@@ -65,7 +65,6 @@ std::pair<double, double> var_cvar(std::vector<double>& pnl, int N, double confi
 
     double tail = 1.0 - confidence;
     int index = static_cast<int>(tail*N);
-    std::cout<<"Index:"<<index<<"\n";
 
     double var_signed = sortedpnl[index];
     double cvar_sum = std::accumulate(sortedpnl.begin(), sortedpnl.begin()+index, 0.0);

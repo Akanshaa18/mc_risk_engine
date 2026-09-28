@@ -42,4 +42,6 @@ PYBIND11_MODULE(risk_engine, m){
         .def_readwrite("cvar99", &MC_returns::cvar99);
     
     m.def("riskEngine", &riskEngine,"Run the Monte Carlo risk engine and return VaR/CVaR");
+
+    m.def("portfolioValue", &portfolioValue, "Check portfolio value");
 }
