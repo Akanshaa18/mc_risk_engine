@@ -1,7 +1,6 @@
 import math
 from scipy.stats import chi2
 
-
 def kupiec_test(n, x, p, significance = 0.05):
     if x == 0:
         llr = -2 * ((n - x) * math.log(1 - p) - (n - x) * math.log(1 - x / n))

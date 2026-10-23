@@ -19,18 +19,18 @@ def make_instrument(underlying, isOption, type, strike, maturity, quantity):
     inst.quantity = quantity
     return inst
 
-def build_portfolio(time_elapsed=0.0):
+def build_portfolio(s_aapl, s_goog, time_elapsed=0.0):
 
     def mat(days):
         return days / 365.0 - time_elapsed
     
     return [
         make_instrument("AAPL", False, risk_engine.OptionType.Call, 0.0, 0.0, 100.0),
-        make_instrument("AAPL", True, risk_engine.OptionType.Call, 300.0, mat(30), 10.0),
-        make_instrument("AAPL", True, risk_engine.OptionType.Put, 270.0, mat(30), -10.0),
-        make_instrument("AAPL", True, risk_engine.OptionType.Call, 270.0, mat(90), 5.0),
-        make_instrument("GOOG", True, risk_engine.OptionType.Put, 370.0, mat(30), 10.0), 
-        make_instrument("GOOG", True, risk_engine.OptionType.Call, 407.0, mat(90), -5.0)
+        make_instrument("AAPL", True, risk_engine.OptionType.Call, 1.0 * s_aapl, mat(30), 10.0),
+        make_instrument("AAPL", True, risk_engine.OptionType.Put, 0.9 * s_aapl, mat(30), -10.0),
+        make_instrument("AAPL", True, risk_engine.OptionType.Call, 0.9 * s_aapl, mat(90), 5.0),
+        make_instrument("GOOG", True, risk_engine.OptionType.Put, 1.0 * s_goog, mat(30), 10.0), 
+        make_instrument("GOOG", True, risk_engine.OptionType.Call, 1.1 * s_goog, mat(90), -5.0)
     ]
 
 def build_mc_engine(trailing_prices_df, portfolio_template, r, N) -> risk_engine.MC_Engine:
@@ -56,7 +56,7 @@ def fetch_price_history(tickers, lookback_days = 913):
     end = date.today()
     start = end - timedelta(lookback_days)
     data = yf.download(tickers, start = start, end = end, interval="1d")["Close"]
-    return data
+    return data.dropna()
 
 def fetch_risk_free_rate():
     raw = yf.download("^IRX", period="5d")["Close"].iloc[-1] / 100.0

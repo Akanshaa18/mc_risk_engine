@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 from data_pipeline import fetch_price_history, fetch_risk_free_rate, build_portfolio, build_mc_engine, DEL_T
 from kupiec import kupiec_test
 
@@ -12,23 +13,22 @@ def run_backtest(tickers = ["AAPL", "GOOG"], window = 60, N = 100000, lookback_d
     data = fetch_price_history(tickers, lookback_days)
     M = len(data)
     r = fetch_risk_free_rate()
-    portfolio = build_portfolio()
     results = []
 
     for t in range(window, M-1):
-        trailing_slice = data.iloc[t-window: t]
-        mc_params = build_mc_engine(trailing_slice, portfolio, r, N)
+        trailing_slice = data.iloc[t-window: t+1]
+
+        s_aapl, s_goog = data["AAPL"].iloc[t], data["GOOG"].iloc[t]
+        portfolio_today = build_portfolio(s_aapl, s_goog)                     # original maturities
+        portfolio_tomorrow = build_portfolio(s_aapl, s_goog, time_elapsed=DEL_T)  # one day closer to expiry
+        
+        mc_params = build_mc_engine(trailing_slice, portfolio_today, r, N)
         result = risk_engine.riskEngine(mc_params)
 
-        aapl_today = data["AAPL"].iloc[t]
-        goog_today = data["GOOG"].iloc[t]
         aapl_tom = data["AAPL"].iloc[t+1]
         goog_tom = data["GOOG"].iloc[t+1]
 
-        portfolio_today = build_portfolio()                     # original maturities
-        portfolio_tomorrow = build_portfolio(time_elapsed=DEL_T)  # one day closer to expiry
-
-        value_today = risk_engine.portfolioValue(portfolio_today, aapl_today, goog_today, r, mc_params.vol1, mc_params.vol2)
+        value_today = risk_engine.portfolioValue(portfolio_today, s_aapl, s_goog, r, mc_params.vol1, mc_params.vol2)
         value_tomorrow = risk_engine.portfolioValue(portfolio_tomorrow, aapl_tom, goog_tom, r, mc_params.vol1, mc_params.vol2)
         actual_pnl = value_tomorrow - value_today
 
@@ -59,10 +59,28 @@ def summarize_backtest(results_df):
 
     return kupiec_95, kupiec_99
 
+def run_single_day(tickers = ["AAPL", "GOOG"], window = 60, N = 100000, lookback_days = 913):
+    """
+    One risk engine call on the most recent trailing window, 
+    preserving the full pnl array
+    """
+    data = fetch_price_history(tickers,lookback_days)
+    r = fetch_risk_free_rate()
+
+    trailing = data.iloc[-(window+1):]
+    s_aapl, s_goog = trailing["AAPL"].iloc[-1], trailing["GOOG"].iloc[-1]
+    portfolio = build_portfolio(s_aapl, s_goog)
+
+    mc_params = build_mc_engine(trailing, portfolio, r, N)
+
+    result = risk_engine.riskEngine(mc_params)
+    pnl = np.array(result.pnl)
+    assert np.isfinite(pnl).all(), f"{np.isnan(pnl).sum()} NaN values in pnl"
+    return pnl, result
+
 
 if __name__ == "__main__":
     results_df = run_backtest()
     results_df.to_csv('output.csv', index=False)
     print(results_df.shape)      
     summarize_backtest(results_df)
-    
