@@ -2,7 +2,7 @@
 
 A C++ Monte Carlo engine that estimates 1-day Value at Risk (VaR) and Conditional VaR (CVaR) for a small equity-options portfolio, exposed to Python through pybind11. A Python layer runs a rolling-window backtest on historical AAPL/GOOG data and validates the VaR forecasts with Kupiec's Proportion-of-Failures (POF) test.
 
-A separate write-up of the results and the reasoning behind the design decisions lives in [`docs/results_report.pdf`](docs/results_report.pdf).
+A separate write-up of the results and the reasoning behind the design decisions lives in [`notes_and_results.pdf`](notes_and_results.pdf).
 
 ## What it does
 
